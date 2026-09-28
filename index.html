@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>호스피스간호실무 평가</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<header class="sky"><div class="wrap">
+<p class="course">2026-2 호스피스간호실무 · 간호학과 4학년</p>
+<h1 id="hTitle">마지막까지 곁에 머무는 간호</h1>
+<p class="lead" id="hLead">진단평가와 주차별 형성평가를 여기서 풀어요. 한 문항씩 풀면 바로 해설이 나오고, 끝나면 결과 제출 버튼으로 교수님께 보내요.</p>
+</div></header>
+<main class="wrap" id="app"></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="config.js"></script>
+<script src="questions.js"></script>
+<script>
+const app = document.getElementById("app");
+const store = {
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+let who = store.get("hp_who",{id:"",name:""});
+let records = store.get("hp_records",{});
+let S = null;
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800)}
+function home(){
+  S=null;
+  const rows = ORDER.map(k=>{
+    const b=BANK[k], r=records[k];
+    return `<button class="item ${k==='dx'?'dx':''}" data-k="${k}"><span class="wk">${WEEK[k]}</span><span class="t"><b>${esc(b.title)}</b><span>${esc(b.sub)}</span></span>${r?`<span class="done">${r.score}/${r.total}${r.sent?" · 제출":""}</span>`:""}</button>`;
+  });
+  app.innerHTML = `<section class="card" aria-label="학생 정보">
+    <div class="who"><div><label for="sid">학번</label><input id="sid" inputmode="numeric" autocomplete="off" value="${esc(who.id)}"></div>
+    <div><label for="sname">이름</label><input id="sname" autocomplete="name" value="${esc(who.name)}"></div></div>
+    <div class="err" id="err"></div></section>
+    <div class="list">${rows[0]}<p class="section-h">주차별 형성평가</p>${rows.slice(1).join("")}</div>`;
+  app.querySelectorAll(".item").forEach(b=>b.onclick=()=>{
+    const id=document.getElementById("sid").value.trim(), nm=document.getElementById("sname").value.trim();
+    if(!id||!nm){document.getElementById("err").textContent="학번과 이름을 먼저 입력해 주세요. 결과 제출에 사용돼요.";document.getElementById("sid").focus();return}
+    who={id,name:nm};store.set("hp_who",who);start(b.dataset.k);
+  });
+}
+function start(k){S={k,i:0,ans:[],picked:null};question();window.scrollTo(0,0)}
+function flames(){return BANK[S.k].items.map((q,j)=>{const a=S.ans[j];return `<i class="${a===undefined?'':(a===q.a?'on':'miss')}"></i>`}).join("")}
+function question(){
+  const b=BANK[S.k], q=b.items[S.i];
+  app.innerHTML=`<section class="card"><div class="q-top"><button class="back" id="back">목록으로</button><div class="flames" aria-hidden="true">${flames()}</div></div>
+  <p class="qnum">${esc(b.title)} · ${S.i+1} / ${b.items.length}</p>
+  <h2 class="qtext">${esc(q.q)}</h2>
+  <div class="opts" role="group" aria-label="보기">${q.o.map((o,j)=>`<button class="opt" data-j="${j}"><span class="n">${j+1}</span><span>${esc(o)}</span></button>`).join("")}</div>
+  <div id="fbx" aria-live="polite"></div></section>`;
+  document.getElementById("back").onclick=()=>{if(confirm("지금 나가면 이번 풀이는 저장되지 않아요. 나갈까요?"))home()};
+  app.querySelectorAll(".opt").forEach(btn=>btn.onclick=()=>pick(+btn.dataset.j));
+}
+function pick(j){
+  const b=BANK[S.k], q=b.items[S.i]; S.ans[S.i]=j;
+  app.querySelectorAll(".opt").forEach((btn,x)=>{btn.disabled=true;if(x===q.a)btn.classList.add("right");else if(x===j)btn.classList.add("wrong")});
+  const ok=j===q.a, last=S.i===b.items.length-1;
+  document.querySelector(".flames").innerHTML=flames();
+  document.getElementById("fbx").innerHTML=`<div class="fb"><b>${ok?"맞았어요.":"정답은 "+(q.a+1)+"번이에요."}</b>${esc(q.e)}</div><div class="row"><button class="btn primary" id="next">${last?"결과 보기":"다음 문항"}</button></div>`;
+  const n=document.getElementById("next");n.focus();n.onclick=()=>{if(last)result();else{S.i++;question();window.scrollTo(0,0)}};
+}
+function result(){
+  const b=BANK[S.k], total=b.items.length;
+  const wrong=b.items.map((q,j)=>S.ans[j]===q.a?null:j).filter(x=>x!==null);
+  const score=total-wrong.length, now=new Date();
+  const stamp=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0")+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+  records[S.k]={score,total,at:stamp};store.set("hp_records",records);
+  const text=`[호스피스간호실무] ${b.title}\n학번: ${who.id}\n이름: ${who.name}\n점수: ${score}/${total}\n오답 문항: ${wrong.length?wrong.map(x=>x+1).join(", "):"없음"}\n응답: ${S.ans.map(a=>a+1).join("")}\n완료: ${stamp}`;
+  const subId=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  const payload={action:"submit",key:S.k,sid:who.id,name:who.name,score,total,answers:S.ans.map(a=>a+1).join(""),wrong:wrong.map(x=>x+1).join(","),subId};
+  app.innerHTML=`<section class="card"><p class="qnum">${esc(b.title)} 결과</p><p class="score">${score}<span style="font-size:24px;color:var(--muted)"> / ${total}</span></p>
+  <p>${S.k==="dx"?"지금의 출발점이에요. 성적에는 반영되지 않으니, 틀린 문항은 앞으로 배울 내용이라고 생각하면 돼요.":score===total?"모두 맞았어요. 이번 주 핵심을 잘 잡았어요.":"틀린 문항의 해설을 한 번 더 읽고 강의 해당 부분을 다시 보세요."}</p>
+  <div class="row" style="justify-content:flex-start"><button class="btn lamp" id="send">결과 제출</button><button class="btn" id="copy">결과 복사</button><button class="btn" id="again">다시 풀기</button><button class="btn" id="home">목록으로</button></div>
+  <div id="st" class="status wait" role="status">결과 제출을 눌러야 교수님께 전달돼요.</div>
+  ${wrong.length?`<h3 style="margin-top:22px;font-size:19px">다시 볼 문항</h3><div class="review">${wrong.map(j=>{const q=b.items[j];return `<div class="rq"><b>${j+1}. ${esc(q.q)}</b><p>정답: ${q.a+1}번 ${esc(q.o[q.a])}</p><p>${esc(q.e)}</p></div>`}).join("")}</div>`:""}</section>`;
+  document.getElementById("copy").onclick=async()=>{try{await navigator.clipboard.writeText(text);toast("결과를 복사했어요")}catch(e){prompt("아래 내용을 길게 눌러 복사하세요",text)}};
+  const st=document.getElementById("st"), send=document.getElementById("send");
+  send.onclick=async()=>{
+    if(!API_URL){st.className="status no";st.textContent="아직 제출 주소가 설정되지 않았어요. '결과 복사'로 교수님이 안내한 곳에 제출해 주세요.";return}
+    send.disabled=true;st.className="status wait";st.textContent="제출하는 중이에요…";
+    try{const r=await fetch(API_URL,{method:"POST",body:JSON.stringify(payload)});const j=await r.json();
+      if(!j.ok)throw new Error(j.error);records[S.k].sent=true;store.set("hp_records",records);
+      st.className="status ok";st.textContent="제출했어요. 교수님께 결과가 전달되었습니다.";send.textContent="제출 완료"}
+    catch(e){send.disabled=false;st.className="status no";st.textContent="제출하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요. 계속 안 되면 '결과 복사'로 제출해 주세요."}
+  };
+  document.getElementById("again").onclick=()=>start(S.k);
+  document.getElementById("home").onclick=home;
+  window.scrollTo(0,0);
+}
+home();
+</script>
+</body>
+</html>
