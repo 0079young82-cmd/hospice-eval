@@ -23,11 +23,24 @@ const ROSTER = "students";
 function setup() {
   PropertiesService.getScriptProperties().setProperty("ADMIN_KEY", ADMIN_PASSWORD);
   sheet_(SUB, SUB_HEAD); sheet_(LOG, LOG_HEAD); sheet_(ROSTER, ["학번", "이름"]);
-  Logger.log("준비 완료. 이제 [배포]에서 웹 앱으로 (새 버전) 배포하세요.");
+  Logger.log("준비 완료. 결과 시트 주소: " + ss_().getUrl());
+  Logger.log("이제 [배포 > 새 배포 > 웹 앱]으로 배포하세요.");
+}
+
+// 스프레드시트에서 연 스크립트면 그 시트를, 따로 만든 스크립트면 결과용 시트를 새로 만들어 씁니다.
+function ss_() {
+  const a = SpreadsheetApp.getActiveSpreadsheet();
+  if (a) return a;
+  const p = PropertiesService.getScriptProperties();
+  const id = p.getProperty("SHEET_ID");
+  if (id) return SpreadsheetApp.openById(id);
+  const s = SpreadsheetApp.create("호스피스간호실무_평가결과");
+  p.setProperty("SHEET_ID", s.getId());
+  return s;
 }
 
 function sheet_(name, head) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ss_();
   let sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
