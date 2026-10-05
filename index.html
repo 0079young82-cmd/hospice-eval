@@ -3,97 +3,136 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>호스피스간호실무 평가</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<title>호스피스간호실무 · 진단·형성평가</title>
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-</head><body>
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
 <header class="sky"><div class="wrap">
-<p class="course">2026-2 호스피스간호실무 · 간호학과 4학년</p>
-<h1 id="hTitle">마지막까지 곁에 머무는 간호</h1>
-<p class="lead" id="hLead">진단평가와 주차별 형성평가를 여기서 풀어요. 한 문항씩 풀면 바로 해설이 나오고, 끝나면 결과 제출 버튼으로 교수님께 보내요.</p>
+<p class="course" id="courseLbl"></p>
+<h1>진단·형성평가</h1>
+<p class="lead">강의를 듣고, "강의를 들었습니다"에 체크한 뒤 문제를 풀면 출석과 결과가 자동으로 교수님께 전달됩니다.</p>
 </div></header>
 <main class="wrap" id="app"></main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="config.js"></script>
-<script src="questions.js"></script>
+<script src="config.js?v=2"></script>
+<script src="questions.js?v=2"></script>
 <script>
-const app = document.getElementById("app");
-const store = {
-  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
-  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-};
-let who = store.get("hp_who",{id:"",name:""});
-let records = store.get("hp_records",{});
-let S = null;
+const app=document.getElementById("app");
+document.getElementById("courseLbl").textContent=COURSE_LABEL;
+const UA=navigator.userAgent.slice(0,150);
+const st={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let who=st.get("hp_who",null), recs=st.get("hp_recs",{}), queue=st.get("hp_queue",[]), online=null;
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
-function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800)}
-function home(){
-  S=null;
-  const rows = ORDER.map(k=>{
-    const b=BANK[k], r=records[k];
-    return `<button class="item ${k==='dx'?'dx':''}" data-k="${k}"><span class="wk">${WEEK[k]}</span><span class="t"><b>${esc(b.title)}</b><span>${esc(b.sub)}</span></span>${r?`<span class="done">${r.score}/${r.total}${r.sent?" · 제출":""}</span>`:""}</button>`;
-  });
-  app.innerHTML = `<section class="card" aria-label="학생 정보">
-    <div class="who"><div><label for="sid">학번</label><input id="sid" inputmode="numeric" autocomplete="off" value="${esc(who.id)}"></div>
-    <div><label for="sname">이름</label><input id="sname" autocomplete="name" value="${esc(who.name)}"></div></div>
-    <div class="err" id="err"></div></section>
-    <div class="list">${rows[0]}<p class="section-h">주차별 형성평가</p>${rows.slice(1).join("")}</div>`;
-  app.querySelectorAll(".item").forEach(b=>b.onclick=()=>{
-    const id=document.getElementById("sid").value.trim(), nm=document.getElementById("sname").value.trim();
-    if(!id||!nm){document.getElementById("err").textContent="학번과 이름을 먼저 입력해 주세요. 결과 제출에 사용돼요.";document.getElementById("sid").focus();return}
-    who={id,name:nm};store.set("hp_who",who);start(b.dataset.k);
-  });
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}
+function fmt(iso){const d=new Date(iso);if(isNaN(d))return "";return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`}
+async function post(body){
+  if(!API_URL)throw new Error("no_url");
+  const r=await fetch(API_URL,{method:"POST",body:JSON.stringify(body)});
+  const j=await r.json(); if(!j.ok)throw new Error(j.error||"fail"); return j;
 }
-function start(k){S={k,i:0,ans:[],picked:null};question();window.scrollTo(0,0)}
-function flames(){return BANK[S.k].items.map((q,j)=>{const a=S.ans[j];return `<i class="${a===undefined?'':(a===q.a?'on':'miss')}"></i>`}).join("")}
-function question(){
-  const b=BANK[S.k], q=b.items[S.i];
-  app.innerHTML=`<section class="card"><div class="q-top"><button class="back" id="back">목록으로</button><div class="flames" aria-hidden="true">${flames()}</div></div>
-  <p class="qnum">${esc(b.title)} · ${S.i+1} / ${b.items.length}</p>
-  <h2 class="qtext">${esc(q.q)}</h2>
-  <div class="opts" role="group" aria-label="보기">${q.o.map((o,j)=>`<button class="opt" data-j="${j}"><span class="n">${j+1}</span><span>${esc(o)}</span></button>`).join("")}</div>
-  <div id="fbx" aria-live="polite"></div></section>`;
-  document.getElementById("back").onclick=()=>{if(confirm("지금 나가면 이번 풀이는 저장되지 않아요. 나갈까요?"))home()};
-  app.querySelectorAll(".opt").forEach(btn=>btn.onclick=()=>pick(+btn.dataset.j));
+// 보내지 못한 기록은 저장해 두었다가 다시 보냄
+function enqueue(b){queue.push(b);st.set("hp_queue",queue)}
+async function flush(){
+  if(!queue.length||!API_URL)return;
+  const rest=[];
+  for(const b of queue){try{await post(b);if(b.action==="submit"&&recs[b.key]){recs[b.key].sent=true}}catch(e){if(e.message==="not_in_roster")continue;rest.push(b)}}
+  queue=rest;st.set("hp_queue",queue);st.set("hp_recs",recs);
 }
-function pick(j){
-  const b=BANK[S.k], q=b.items[S.i]; S.ans[S.i]=j;
-  app.querySelectorAll(".opt").forEach((btn,x)=>{btn.disabled=true;if(x===q.a)btn.classList.add("right");else if(x===j)btn.classList.add("wrong")});
-  const ok=j===q.a, last=S.i===b.items.length-1;
-  document.querySelector(".flames").innerHTML=flames();
-  document.getElementById("fbx").innerHTML=`<div class="fb"><b>${ok?"맞았어요.":"정답은 "+(q.a+1)+"번이에요."}</b>${esc(q.e)}</div><div class="row"><button class="btn primary" id="next">${last?"결과 보기":"다음 문항"}</button></div>`;
-  const n=document.getElementById("next");n.focus();n.onclick=()=>{if(last)result();else{S.i++;question();window.scrollTo(0,0)}};
+async function ping(){
+  if(!API_URL){online=false;return}
+  try{const r=await fetch(API_URL);const j=await r.json();online=!!j.ok}catch(e){online=false}
 }
-function result(){
-  const b=BANK[S.k], total=b.items.length;
-  const wrong=b.items.map((q,j)=>S.ans[j]===q.a?null:j).filter(x=>x!==null);
-  const score=total-wrong.length, now=new Date();
-  const stamp=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0")+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
-  records[S.k]={score,total,at:stamp};store.set("hp_records",records);
-  const text=`[호스피스간호실무] ${b.title}\n학번: ${who.id}\n이름: ${who.name}\n점수: ${score}/${total}\n오답 문항: ${wrong.length?wrong.map(x=>x+1).join(", "):"없음"}\n응답: ${S.ans.map(a=>a+1).join("")}\n완료: ${stamp}`;
-  const subId=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-  const payload={action:"submit",key:S.k,sid:who.id,name:who.name,score,total,answers:S.ans.map(a=>a+1).join(""),wrong:wrong.map(x=>x+1).join(","),subId};
-  app.innerHTML=`<section class="card"><p class="qnum">${esc(b.title)} 결과</p><p class="score">${score}<span style="font-size:24px;color:var(--muted)"> / ${total}</span></p>
-  <p>${S.k==="dx"?"지금의 출발점이에요. 성적에는 반영되지 않으니, 틀린 문항은 앞으로 배울 내용이라고 생각하면 돼요.":score===total?"모두 맞았어요. 이번 주 핵심을 잘 잡았어요.":"틀린 문항의 해설을 한 번 더 읽고 강의 해당 부분을 다시 보세요."}</p>
-  <div class="row" style="justify-content:flex-start"><button class="btn lamp" id="send">결과 제출</button><button class="btn" id="copy">결과 복사</button><button class="btn" id="again">다시 풀기</button><button class="btn" id="home">목록으로</button></div>
-  <div id="st" class="status wait" role="status">결과 제출을 눌러야 교수님께 전달돼요.</div>
-  ${wrong.length?`<h3 style="margin-top:22px;font-size:19px">다시 볼 문항</h3><div class="review">${wrong.map(j=>{const q=b.items[j];return `<div class="rq"><b>${j+1}. ${esc(q.q)}</b><p>정답: ${q.a+1}번 ${esc(q.o[q.a])}</p><p>${esc(q.e)}</p></div>`}).join("")}</div>`:""}</section>`;
-  document.getElementById("copy").onclick=async()=>{try{await navigator.clipboard.writeText(text);toast("결과를 복사했어요")}catch(e){prompt("아래 내용을 길게 눌러 복사하세요",text)}};
-  const st=document.getElementById("st"), send=document.getElementById("send");
-  send.onclick=async()=>{
-    if(!API_URL){st.className="status no";st.textContent="아직 제출 주소가 설정되지 않았어요. '결과 복사'로 교수님이 안내한 곳에 제출해 주세요.";return}
-    send.disabled=true;st.className="status wait";st.textContent="제출하는 중이에요…";
-    try{const r=await fetch(API_URL,{method:"POST",body:JSON.stringify(payload)});const j=await r.json();
-      if(!j.ok)throw new Error(j.error);records[S.k].sent=true;store.set("hp_records",records);
-      st.className="status ok";st.textContent="제출했어요. 교수님께 결과가 전달되었습니다.";send.textContent="제출 완료"}
-    catch(e){send.disabled=false;st.className="status no";st.textContent="제출하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요. 계속 안 되면 '결과 복사'로 제출해 주세요."}
+function banner(){
+  if(!API_URL)return `<p class="banner">아직 제출 서버가 연결되지 않았습니다. 교수님(조교)께 알려 주세요. 문제는 풀 수 있고, 결과는 휴대폰에 저장되었다가 연결되면 자동으로 전송됩니다.</p>`;
+  if(online===false)return `<p class="banner">지금 제출 서버에 연결되지 않습니다. 인터넷 연결을 확인해 주세요. 결과는 저장되었다가 연결되면 자동으로 전송됩니다.${queue.length?` (보내지 못한 기록 ${queue.length}건)`:""}</p>`;
+  return queue.length?`<p class="banner">보내지 못한 기록 ${queue.length}건이 있습니다. <button class="btn" id="retry" style="margin-left:6px">다시 보내기</button></p>`:"";
+}
+function login(msg){
+  app.innerHTML=`<section class="card">${banner()}
+  <div class="who"><div><label for="sid">학번</label><input id="sid" inputmode="numeric" autocomplete="off" value="${esc(who?.sid||"")}"></div>
+  <div><label for="sname">이름</label><input id="sname" autocomplete="off" value="${esc(who?.name||"")}"></div></div>
+  <p class="err" id="err" style="color:var(--no)">${msg||""}</p>
+  <div class="row"><button class="btn primary" id="go">들어가기</button></div>
+  <p class="note">학번과 이름은 출석과 성적 확인에 쓰입니다. 정확히 입력해 주세요.</p></section>`;
+  const go=async()=>{
+    const sid=document.getElementById("sid").value.trim(), name=document.getElementById("sname").value.trim();
+    if(!/^\d{4,12}$/.test(sid)){login("학번을 숫자로 정확히 입력해 주세요.");return}
+    if(name.length<2){login("이름을 입력해 주세요.");return}
+    const b={action:"login",sid,name,ua:UA,clientAt:new Date().toISOString()};
+    try{await post(b)}catch(e){
+      if(e.message==="not_in_roster"){login("수강생 명단에 없는 학번·이름입니다. 다시 확인하거나 조교에게 문의해 주세요.");return}
+      enqueue(b);
+    }
+    who={sid,name};st.set("hp_who",who);home();
   };
-  document.getElementById("again").onclick=()=>start(S.k);
-  document.getElementById("home").onclick=home;
-  window.scrollTo(0,0);
+  document.getElementById("go").onclick=go;
 }
-home();
+function home(){
+  const item=k=>{const r=recs[k];const dl=(typeof DEADLINES!=="undefined"&&DEADLINES[k])?`<span class="pill">마감 ${fmt(DEADLINES[k])}</span>`:"";
+    return `<button class="item ${k==="dx"?"dx":""}" data-k="${k}"><span class="wk">${WEEK[k]}</span><span class="t"><b>${esc(BANK[k].title)}${dl}</b><span>${BANK[k].items.length}문항</span></span>${r?`<span class="done">${r.score}/${r.total} · ${r.sent?"제출됨":"전송 대기"}</span>`:""}</button>`};
+  app.innerHTML=`${banner()}<section class="card"><p style="margin:0"><b>${esc(who.name)}</b> <span class="meta">(${esc(who.sid)})</span> <button class="back" id="out" style="float:right">학번 바꾸기</button></p>
+  <p class="meta" style="margin:6px 0 0">각 주차 녹화강의를 끝까지 들은 뒤 해당 평가를 풀어 주세요. 평가를 제출해야 출석으로 인정됩니다.</p></section>
+  <p class="section-h">1주차</p><div class="list">${item("dx")}${item("w1")}</div>
+  <p class="section-h">2~14주차 형성평가</p><div class="list">${ORDER.filter(k=>k!=="dx"&&k!=="w1").map(item).join("")}</div>`;
+  app.querySelectorAll(".item").forEach(b=>b.onclick=()=>gate(b.dataset.k));
+  document.getElementById("out").onclick=()=>login();
+  const rt=document.getElementById("retry");if(rt)rt.onclick=async()=>{await flush();await ping();home();toast(queue.length?"아직 보내지 못했어요":"모두 보냈어요")};
+}
+function gate(k){
+  const lect=k==="dx"||k==="w1"?"1주차 오리엔테이션":WEEK[k];
+  app.innerHTML=`<section class="card"><button class="back" id="bk">← 목록으로</button>
+  <h2 style="margin:8px 0 6px">${WEEK[k]} · ${esc(BANK[k].title)}</h2>
+  <p class="meta">${BANK[k].items.length}문항 · 한 문항씩 풀면 바로 해설이 나옵니다.${recs[k]?` · 이미 ${recs[k].attempt||1}회 제출함(다시 풀 수 있음)`:""}</p>
+  <label class="check" for="ck"><input type="checkbox" id="ck"><span><b>${lect} 강의를 들었습니다.</b><br><span class="meta">체크한 시각이 출석 기록으로 남습니다.</span></span></label>
+  <div class="row"><button class="btn primary" id="st" disabled>평가 시작</button></div></section>`;
+  const ck=document.getElementById("ck"),sb=document.getElementById("st");
+  ck.onchange=()=>{sb.disabled=!ck.checked};
+  document.getElementById("bk").onclick=home;
+  sb.onclick=()=>{
+    const now=new Date().toISOString();
+    const b={action:"event",event:"lecture_check",sid:who.sid,name:who.name,key:k,detail:`${lect} 강의 들음 체크`,ua:UA,clientAt:now};
+    post(b).catch(e=>enqueue(b));
+    quiz(k,now);
+  };
+}
+function quiz(k,checkedAt){
+  const items=BANK[k].items, S={k,i:0,ans:[],t0:Date.now(),qStart:Date.now(),perQ:[],leave:0,checkedAt,startedAt:new Date().toISOString()};
+  const onVis=()=>{if(document.hidden)S.leave++};document.addEventListener("visibilitychange",onVis);
+  const draw=()=>{
+    const q=items[S.i];
+    app.innerHTML=`<section class="card"><div class="q-top"><span class="meta">${WEEK[k]} · ${S.i+1}/${items.length}</span><div class="flames">${items.map((_,j)=>`<i class="${j<S.i?"on":""}"></i>`).join("")}</div></div>
+    <p class="qtext">${esc(q.q)}</p><div class="opts" style="display:flex;flex-direction:column;gap:10px">${q.o.map((o,j)=>`<button class="opt" data-j="${j}"><span class="n">${j+1}</span><span>${esc(o)}</span></button>`).join("")}</div><div id="fb"></div></section>`;
+    app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
+      const j=+b.dataset.j;S.ans[S.i]=j;S.perQ[S.i]=Math.round((Date.now()-S.qStart)/1000);
+      app.querySelectorAll(".opt").forEach(x=>{x.disabled=true;const v=+x.dataset.j;if(v===q.a)x.classList.add("right");else if(v===j)x.classList.add("wrong")});
+      document.getElementById("fb").innerHTML=`<div class="fb"><b>${j===q.a?"정답이에요.":"정답은 "+(q.a+1)+"번이에요."}</b> ${esc(q.e)}</div><div class="row"><button class="btn primary" id="nx">${S.i+1<items.length?"다음 문항":"결과 보기"}</button></div>`;
+      document.getElementById("nx").onclick=()=>{S.i++;S.qStart=Date.now();if(S.i<items.length)draw();else{document.removeEventListener("visibilitychange",onVis);finish(S)}};
+    });
+  };
+  draw();
+}
+async function finish(S){
+  const k=S.k,items=BANK[k].items;
+  const score=items.filter((q,i)=>S.ans[i]===q.a).length, wrong=items.map((q,i)=>S.ans[i]===q.a?null:i+1).filter(Boolean);
+  const attempt=((recs[k]&&recs[k].attempt)||0)+1;
+  const b={action:"submit",key:k,sid:who.sid,name:who.name,score,total:items.length,answers:S.ans.map(a=>a+1).join(""),wrong:wrong.join(","),
+    checkedAt:S.checkedAt,startedAt:S.startedAt,clientAt:new Date().toISOString(),durationSec:Math.round((Date.now()-S.t0)/1000),
+    perQ:S.perQ.join(","),leaveCount:S.leave,attempt,ua:UA,subId:Date.now().toString(36)+Math.random().toString(36).slice(2,8)};
+  recs[k]={score,total:items.length,attempt,sent:false,at:b.clientAt};st.set("hp_recs",recs);
+  app.innerHTML=`<section class="card"><h2>${score} / ${items.length}</h2><p class="meta">${WEEK[k]} · ${esc(BANK[k].title)}</p>
+  <p id="sst" class="banner" style="background:var(--lamp-soft);color:var(--ink)">결과를 교수님께 보내는 중이에요…</p>
+  <div class="row"><button class="btn" id="cp">결과 복사</button><button class="btn" id="again">다시 풀기</button><button class="btn primary" id="hm">목록으로</button></div></section>`;
+  const sst=document.getElementById("sst");
+  const send=async()=>{try{await post(b);recs[k].sent=true;st.set("hp_recs",recs);sst.style.background="var(--ok-bg)";sst.style.color="var(--ok)";sst.textContent="제출 완료! 출석과 결과가 교수님께 전달되었습니다."}
+    catch(e){enqueue(b);sst.style.background="var(--no-bg)";sst.style.color="var(--no)";sst.innerHTML=`지금은 보내지 못했어요. 결과는 저장되어 다음에 앱을 열 때 자동으로 다시 보냅니다. <button class="btn" id="rs">지금 다시 보내기</button>`;
+      document.getElementById("rs").onclick=async()=>{await flush();if(recs[k].sent){sst.style.background="var(--ok-bg)";sst.style.color="var(--ok)";sst.textContent="제출 완료! 출석과 결과가 교수님께 전달되었습니다."}else toast("아직 연결되지 않아요")}}};
+  send();
+  document.getElementById("hm").onclick=home;
+  document.getElementById("again").onclick=()=>gate(k);
+  document.getElementById("cp").onclick=()=>{const t=`[호스피스간호실무 ${WEEK[k]}] ${who.sid} ${who.name} 점수 ${score}/${items.length} 응답 ${b.answers} 제출 ${b.clientAt}`;navigator.clipboard?.writeText(t).then(()=>toast("복사했어요"),()=>prompt("복사해 주세요",t))};
+}
+(async()=>{await ping();await flush();if(who)home();else login();})();
 </script>
 </body>
 </html>

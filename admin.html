@@ -4,118 +4,140 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>교수용 결과 확인 · 호스피스간호실무</title>
+<title>교수용 · 출석과 평가 관리</title>
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 <style>
-.wide{max-width:1100px}
+.wide{max-width:1200px} main.wrap{margin-top:0;padding-top:8px}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
 .tab{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 16px;font-weight:600}
 .tab[aria-selected="true"]{background:var(--dusk);color:#fff;border-color:var(--dusk)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
-.stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:left;width:100%}
-.stat b{display:block;font-family:"Gowun Batang",serif;font-size:17px}
-.stat .big{font-size:30px;font-family:"Gowun Batang",serif;line-height:1.2;margin:6px 0 2px}
-.stat span{font-size:14px;color:var(--muted)}
-.bar{height:10px;border-radius:5px;background:var(--line);overflow:hidden;min-width:120px}
-.bar i{display:block;height:100%;background:var(--lamp)}
-.bar i.low{background:var(--no)}
 .tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
 .tools input,.tools select{width:auto;flex:1;min-width:160px}
-.qa td.q{white-space:normal;min-width:280px}
-.miss{color:var(--muted)}
-main.wrap{margin-top:0;padding-top:8px}
 select{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--choice);color:var(--ink)}
+.tbl{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--surface);color:var(--muted);font-weight:600;cursor:pointer;z-index:1}
+td.q{white-space:normal;min-width:260px}
+.o{color:var(--ok);font-weight:600}.l{color:#b36f10;font-weight:600}.x{color:var(--muted)}
+.warn{color:var(--no);font-weight:600}
+.bar{height:9px;border-radius:5px;background:var(--line);overflow:hidden;width:110px;display:inline-block;vertical-align:middle;margin-right:6px}.bar i{display:block;height:100%;background:var(--lamp)}.bar i.low{background:var(--no)}
+.legend{font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
-<header class="sky"><div class="wrap wide">
-<p class="course" id="courseLbl"></p>
-<h1>교수용 결과 확인</h1>
-<p class="lead">학생들이 제출한 진단평가와 주차별 형성평가 결과를 한곳에서 봅니다.</p>
-</div></header>
+<header class="sky"><div class="wrap wide"><p class="course" id="courseLbl"></p><h1>교수용 · 출석과 평가 관리</h1>
+<p class="lead">로그인, 강의 확인, 평가 시작·제출 시각과 풀이 기록을 한곳에서 봅니다.</p></div></header>
 <main class="wrap wide" id="app"></main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="config.js"></script>
-<script src="questions.js"></script>
+<script src="config.js?v=2"></script>
+<script src="questions.js?v=2"></script>
 <script>
-const app=document.getElementById("app");
-document.getElementById("courseLbl").textContent=COURSE_LABEL;
-let ROWS=[], VIEW="summary", SEL="dx", SORT={k:"sid",d:1}, Q="";
-function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
-function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800)}
-function fmt(iso){const d=new Date(iso);if(isNaN(d))return iso;return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`}
-// 서버 점수 대신 문항은행으로 다시 채점
+const app=document.getElementById("app");document.getElementById("courseLbl").textContent=COURSE_LABEL;
+let D={subs:[],logs:[],roster:[]},VIEW="att",SEL="w2",BASIS="first",Q="",SORT={k:"sid",d:1},PW="";
+const DL=typeof DEADLINES!=="undefined"?DEADLINES:{}, FAST=(typeof FAST_SEC_PER_ITEM!=="undefined"?FAST_SEC_PER_ITEM:8);
+function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}
+function fmt(iso,sec){const d=new Date(iso);if(isNaN(d))return iso||"";const p=n=>String(n).padStart(2,"0");return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}${sec?":"+p(d.getSeconds()):""}`}
+function dur(s){s=+s||0;return s>=60?`${Math.floor(s/60)}분 ${s%60}초`:`${s}초`}
 function regrade(r){const b=BANK[r.key];if(!b)return r;const a=String(r.answers);let s=0;b.items.forEach((q,i)=>{if(+a[i]-1===q.a)s++});return {...r,score:s,total:b.items.length}}
-function latest(key){const m={};ROWS.filter(r=>r.key===key).forEach(r=>{const k=r.sid;if(!m[k]){m[k]={...r,tries:1}}else{m[k].tries++;if(r.at>m[k].at)m[k]={...r,tries:m[k].tries}}});return Object.values(m)}
+function fast(r){const b=BANK[r.key];return !!b&&r.dur!==""&&r.dur!=null&&(+r.dur)<b.items.length*FAST}
+function students(){const m=new Map();D.roster.forEach(x=>m.set(x.sid,{sid:x.sid,name:x.name,inRoster:true}));
+  D.subs.concat(D.logs).forEach(x=>{if(x.sid&&!m.has(x.sid))m.set(x.sid,{sid:x.sid,name:x.name,inRoster:!D.roster.length})});return [...m.values()].sort((a,b)=>a.sid<b.sid?-1:1)}
+function subsOf(sid,key){return D.subs.filter(r=>r.sid===sid&&r.key===key).sort((a,b)=>a.at<b.at?-1:1)}
+function pick(list){if(!list.length)return null;if(BASIS==="first")return list[0];if(BASIS==="last")return list[list.length-1];return list.reduce((a,b)=>b.score>a.score?b:a)}
+function att(sid,key){const l=subsOf(sid,key);if(!l.length)return {s:"x"};const f=l[0];const late=DL[key]&&new Date(f.at)>new Date(DL[key]);return {s:late?"l":"o",at:f.at,n:l.length}}
 function login(msg){
-  app.innerHTML=`<section class="card" style="max-width:460px">
-  <label for="pw">관리자 비밀번호</label><input id="pw" type="password" autocomplete="current-password">
-  <div class="err" id="err">${msg||""}</div>
-  <div class="row" style="justify-content:flex-start"><button class="btn primary" id="go">결과 불러오기</button></div>
-  ${API_URL?"":'<p class="note">config.js에 API_URL이 비어 있어요. README의 순서대로 서버 주소를 먼저 넣어 주세요.</p>'}</section>`;
+  app.innerHTML=`<section class="card" style="max-width:480px"><label for="pw">관리자 비밀번호</label><input id="pw" type="password" autocomplete="current-password">
+  <p style="color:var(--no)">${msg||""}</p><div class="row" style="justify-content:flex-start"><button class="btn primary" id="go">불러오기</button><button class="btn" id="pg">서버 연결 점검</button></div>
+  <p class="note" id="pgres">${API_URL?"":"config.js의 API_URL이 비어 있습니다. README의 순서대로 서버 주소를 넣어 주세요."}</p></section>`;
   const go=()=>load(document.getElementById("pw").value);
   document.getElementById("go").onclick=go;document.getElementById("pw").onkeydown=e=>{if(e.key==="Enter")go()};
-  document.getElementById("pw").focus();
+  document.getElementById("pg").onclick=check;
+}
+async function check(){
+  const el=document.getElementById("pgres");
+  if(!API_URL){el.textContent="API_URL이 비어 있습니다.";return}
+  if(!/\/exec$/.test(API_URL)){el.textContent="API_URL이 /exec 로 끝나지 않습니다. 웹 앱 배포 주소를 다시 복사해 주세요.";return}
+  el.textContent="점검 중…";
+  try{const r=await fetch(API_URL);const j=await r.json();el.textContent=j.version>=2?"연결 정상 (서버 2판).":"연결은 되지만 서버 코드가 예전 판입니다. Code.gs를 새로 붙여 넣고 [배포 관리 → 새 버전]으로 다시 배포해 주세요."}
+  catch(e){el.textContent="연결 실패. Apps Script 배포의 액세스 권한이 '모든 사용자'인지, 코드 수정 뒤 새 버전으로 배포했는지 확인해 주세요."}
 }
 async function load(pw){
   if(!pw){login("비밀번호를 입력해 주세요.");return}
-  app.innerHTML=`<section class="card">결과를 불러오는 중이에요…</section>`;
+  app.innerHTML=`<section class="card">불러오는 중…</section>`;
   try{const r=await fetch(API_URL,{method:"POST",body:JSON.stringify({action:"results",password:pw})});const j=await r.json();
-    if(!j.ok){login(j.error==="auth"?"비밀번호가 맞지 않아요.":"불러오지 못했어요: "+j.error);return}
-    ROWS=j.rows.map(regrade);sessionStorage.setItem("hp_pw",pw);render()}
-  catch(e){login("서버에 연결하지 못했어요. API_URL과 배포 설정(액세스: 모든 사용자)을 확인해 주세요.")}
+    if(!j.ok){login(j.error==="auth"?"비밀번호가 맞지 않습니다.":"불러오지 못했습니다: "+(j.message||j.error));return}
+    D={subs:(j.subs||[]).map(regrade),logs:j.logs||[],roster:j.roster||[]};PW=pw;sessionStorage.setItem("hp_pw",pw);render()}
+  catch(e){login("서버에 연결하지 못했습니다. '서버 연결 점검'을 눌러 원인을 확인해 주세요.")}
 }
-function tabs(){return `<div class="tabs" role="tablist">
- ${[["summary","전체 현황"],["one","평가별 결과"],["items","문항 분석"],["students","학생별 성적표"]].map(([k,l])=>`<button class="tab" role="tab" aria-selected="${VIEW===k}" data-v="${k}">${l}</button>`).join("")}
- <span style="flex:1"></span><button class="btn" id="reload">새로고침</button><button class="btn" id="csv">CSV 내려받기</button></div>`}
-function sel(){return `<select id="sel">${ORDER.map(k=>`<option value="${k}" ${k===SEL?"selected":""}>${WEEK[k]} · ${esc(BANK[k].title)}</option>`).join("")}</select>`}
+function tabs(){return `<div class="tabs">${[["att","출석부"],["one","평가별 결과"],["items","문항 분석"],["grade","성적 산출"],["log","활동 기록"]].map(([k,l])=>`<button class="tab" aria-selected="${VIEW===k}" data-v="${k}">${l}</button>`).join("")}
+  <span style="flex:1"></span><button class="btn" id="rl">새로고침</button></div>`}
+const selKey=()=>`<select id="sel">${ORDER.map(k=>`<option value="${k}" ${k===SEL?"selected":""}>${WEEK[k]} · ${esc(BANK[k].title)}</option>`).join("")}</select>`;
+const selBasis=()=>`<select id="basis"><option value="first" ${BASIS==="first"?"selected":""}>점수 기준: 첫 응시</option><option value="best" ${BASIS==="best"?"selected":""}>점수 기준: 최고점</option><option value="last" ${BASIS==="last"?"selected":""}>점수 기준: 최근 응시</option></select>`;
+const search=()=>`<input id="q" placeholder="학번 또는 이름 검색" value="${esc(Q)}">`;
+const match=s=>!Q||s.sid.includes(Q)||String(s.name).includes(Q);
+let CSV=null;
 function render(){
-  let h=tabs();
-  const students=[...new Map(ROWS.map(r=>[r.sid,r.name])).entries()];
-  if(VIEW==="summary"){
-    h+=`<p class="note">응답자 ${students.length}명 · 제출 ${ROWS.length}건. 카드를 누르면 해당 평가 결과로 이동합니다.</p><div class="grid">`+ORDER.map(k=>{
-      const L=latest(k);const avg=L.length?(L.reduce((s,r)=>s+r.score/r.total,0)/L.length*100):null;
-      return `<button class="stat" data-k="${k}"><span>${WEEK[k]}</span><b>${esc(BANK[k].title)}</b><div class="big">${L.length}명</div><span>${avg===null?"아직 제출 없음":"평균 "+avg.toFixed(0)+"점 (100점 환산)"}</span></button>`}).join("")+`</div>`;
+  let h=tabs(); const S=students().filter(match);
+  if(VIEW==="att"){
+    h+=`<div class="tools">${search()}<button class="btn" id="csv">CSV 내려받기</button></div>
+    <p class="legend"><span class="o">○</span> 출석(평가 제출) · <span class="l">△</span> 지각(마감 후 제출) · <span class="x">·</span> 미제출 · 칸에 마우스를 올리면 제출 시각이 보입니다. ${D.roster.length?`명단 ${D.roster.length}명 기준`:"명단 미등록(제출한 학생만 표시)"}</p>
+    <div class="tbl"><table><tr><th>학번</th><th>이름</th>${ORDER.map(k=>`<th>${WEEK[k]}</th>`).join("")}<th>출석</th><th>지각</th><th>결석</th></tr>
+    ${S.map(s=>{let o=0,l=0,x=0;const cells=ORDER.map(k=>{const a=att(s.sid,k);if(a.s==="o")o++;else if(a.s==="l")l++;else x++;
+      return `<td title="${a.at?fmt(a.at,true)+" 첫 제출, 총 "+a.n+"회":"미제출"}" class="${a.s}">${a.s==="o"?"○":a.s==="l"?"△":"·"}</td>`}).join("");
+      return `<tr><td>${esc(s.sid)}${s.inRoster?"":' <span class="warn" title="명단에 없음">?</span>'}</td><td>${esc(s.name)}</td>${cells}<td class="o">${o}</td><td class="l">${l}</td><td>${x}</td></tr>`}).join("")||`<tr><td colspan="20" class="x">기록이 없습니다.</td></tr>`}</table></div>`;
+    CSV=[["학번","이름",...ORDER.map(k=>WEEK[k]),"출석","지각","결석"]].concat(S.map(s=>{let o=0,l=0,x=0;const c=ORDER.map(k=>{const a=att(s.sid,k);if(a.s==="o")o++;else if(a.s==="l")l++;else x++;return a.s==="o"?"출석 "+fmt(a.at):a.s==="l"?"지각 "+fmt(a.at):"미제출"});return [s.sid,s.name,...c,o,l,x]}));
   }
   if(VIEW==="one"){
-    let L=latest(SEL).filter(r=>!Q||r.sid.includes(Q)||r.name.includes(Q));
-    L.sort((a,b)=>{const x=a[SORT.k],y=b[SORT.k];return (x>y?1:x<y?-1:0)*SORT.d});
     const n=BANK[SEL].items.length;
-    h+=`<div class="tools">${sel()}<input id="q" placeholder="학번 또는 이름 검색" value="${esc(Q)}"></div>
-    <p class="note">학생별 가장 최근 제출을 보여 줍니다. 제목을 누르면 정렬돼요.</p>
-    <div class="tbl"><table><tr><th data-s="sid">학번</th><th data-s="name">이름</th><th data-s="score">점수</th><th data-s="tries">응시 횟수</th><th data-s="at">최근 제출</th><th>오답 문항</th></tr>
-    ${L.map(r=>`<tr><td>${esc(r.sid)}</td><td>${esc(r.name)}</td><td><b>${r.score}</b> / ${n}</td><td>${r.tries}</td><td>${fmt(r.at)}</td><td>${esc(r.wrong)||"없음"}</td></tr>`).join("")||`<tr><td colspan="6" class="miss">아직 제출한 학생이 없어요.</td></tr>`}</table></div>`;
+    let L=S.map(s=>{const l=subsOf(s.sid,SEL);const r=pick(l);if(!r)return null;
+      const chk=D.logs.filter(g=>g.sid===s.sid&&g.key===SEL&&g.ev==="lecture_check").sort((a,b)=>a.at<b.at?-1:1)[0];
+      return {...r,tries:l.length,first:l[0].at,chk:chk?chk.at:(r.checkedAt||"")}}).filter(Boolean);
+    L.sort((a,b)=>{const x=a[SORT.k],y=b[SORT.k];return (x>y?1:x<y?-1:0)*SORT.d});
+    h+=`<div class="tools">${selKey()}${selBasis()}${search()}<button class="btn" id="csv">CSV 내려받기</button></div>
+    <p class="legend">⚠ 표시: 문항당 ${FAST}초 미만으로 풀었거나 풀이 중 다른 화면으로 3번 이상 나간 제출. 마감 ${DL[SEL]?fmt(DL[SEL]):"미설정"}</p>
+    <div class="tbl"><table><tr><th data-s="sid">학번</th><th data-s="name">이름</th><th data-s="score">점수</th><th data-s="tries">응시</th><th data-s="chk">강의 확인</th><th data-s="first">첫 제출</th><th data-s="dur">소요</th><th data-s="leave">화면 이탈</th><th>문항별(초)</th><th>오답</th><th>기기</th><th>확인</th></tr>
+    ${L.map(r=>{const w=fast(r)||(+r.leave)>=3;return `<tr><td>${esc(r.sid)}</td><td>${esc(r.name)}</td><td><b>${r.score}</b>/${n}</td><td>${r.tries}</td><td>${fmt(r.chk,true)}</td><td>${fmt(r.first,true)}</td><td>${dur(r.dur)}</td><td>${r.leave||0}</td><td>${esc(r.perQ)}</td><td>${esc(r.wrong)||"없음"}</td><td title="${esc(r.ua)}">${/Mobi|Android|iPhone/.test(r.ua)?"휴대폰":"PC"}</td><td>${w?'<span class="warn">⚠</span>':""}</td></tr>`}).join("")||`<tr><td colspan="12" class="x">제출이 없습니다.</td></tr>`}</table></div>`;
+    CSV=[["학번","이름","점수","만점","응시횟수","강의확인","첫제출","소요(초)","화면이탈","문항별(초)","오답","확인필요"]].concat(L.map(r=>[r.sid,r.name,r.score,n,r.tries,fmt(r.chk,true),fmt(r.first,true),r.dur,r.leave,r.perQ,r.wrong,(fast(r)||(+r.leave)>=3)?"예":""]));
   }
   if(VIEW==="items"){
-    const L=latest(SEL), b=BANK[SEL];
-    h+=`<div class="tools">${sel()}</div><p class="note">${L.length}명 기준 문항별 정답률입니다. 50% 미만은 붉게 표시돼요. 다음 강의에서 다시 짚어 줄 문항을 고를 때 쓰세요.</p>
-    <div class="tbl"><table class="qa"><tr><th>번호</th><th>문항</th><th>정답률</th><th>보기별 선택 (1·2·3·4)</th></tr>
-    ${b.items.map((q,i)=>{const cnt=[0,0,0,0];L.forEach(r=>{const v=+String(r.answers)[i]-1;if(v>=0&&v<4)cnt[v]++});const p=L.length?cnt[q.a]/L.length*100:0;
-      return `<tr><td>${i+1}</td><td class="q">${esc(q.q)}<br><span class="miss">정답 ${q.a+1}. ${esc(q.o[q.a])}</span></td><td><div class="bar"><i class="${p<50?"low":""}" style="width:${p}%"></i></div>${L.length?p.toFixed(0)+"%":"-"}</td><td>${cnt.map((c,j)=>j===q.a?`<b>${c}</b>`:c).join(" · ")}</td></tr>`}).join("")}</table></div>`;
+    const L=S.map(s=>pick(subsOf(s.sid,SEL))).filter(Boolean),b=BANK[SEL];
+    h+=`<div class="tools">${selKey()}${selBasis()}</div><p class="legend">${L.length}명 기준. 50% 미만은 붉게 표시됩니다.</p>
+    <div class="tbl"><table><tr><th>번호</th><th>문항</th><th>정답률</th><th>보기 선택(1·2·3·4)</th></tr>
+    ${b.items.map((q,i)=>{const c=[0,0,0,0];L.forEach(r=>{const v=+String(r.answers)[i]-1;if(v>=0&&v<4)c[v]++});const p=L.length?c[q.a]/L.length*100:0;
+      return `<tr><td>${i+1}</td><td class="q">${esc(q.q)}<br><span class="x">정답 ${q.a+1}. ${esc(q.o[q.a])}</span></td><td><span class="bar"><i class="${p<50?"low":""}" style="width:${p}%"></i></span>${L.length?p.toFixed(0)+"%":"-"}</td><td>${c.map((x,j)=>j===q.a?`<b>${x}</b>`:x).join(" · ")}</td></tr>`}).join("")}</table></div>`;
+    CSV=null;
   }
-  if(VIEW==="students"){
-    const map={};ORDER.forEach(k=>latest(k).forEach(r=>{(map[r.sid]=map[r.sid]||{name:r.name})[k]=r}));
-    let ids=Object.keys(map).sort().filter(s=>!Q||s.includes(Q)||map[s].name.includes(Q));
-    h+=`<div class="tools"><input id="q" placeholder="학번 또는 이름 검색" value="${esc(Q)}"></div>
-    <p class="note">칸의 숫자는 맞힌 문항 수이고, 빈칸은 미제출입니다. 형성평가 참여 현황 확인에 쓰세요.</p>
-    <div class="tbl"><table><tr><th>학번</th><th>이름</th>${ORDER.map(k=>`<th>${WEEK[k]}</th>`).join("")}<th>참여</th></tr>
-    ${ids.map(s=>{const m=map[s];const done=ORDER.filter(k=>m[k]).length;return `<tr><td>${esc(s)}</td><td>${esc(m.name)}</td>${ORDER.map(k=>`<td>${m[k]?m[k].score:'<span class="miss">·</span>'}</td>`).join("")}<td><b>${done}</b>/${ORDER.length}</td></tr>`}).join("")||`<tr><td colspan="18" class="miss">아직 제출이 없어요.</td></tr>`}</table></div>`;
+  if(VIEW==="grade"){
+    const F=ORDER.filter(k=>k!=="dx");
+    const rows=S.map(s=>{let o=0,l=0,sum=0,cnt=0,warn=0;ORDER.forEach(k=>{const a=att(s.sid,k);if(a.s==="o")o++;if(a.s==="l")l++});
+      F.forEach(k=>{const r=pick(subsOf(s.sid,k));if(r){sum+=r.score/r.total*100;cnt++;if(fast(r)||(+r.leave)>=3)warn++}});
+      const dx=pick(subsOf(s.sid,"dx"));return {sid:s.sid,name:s.name,o,l,x:ORDER.length-o-l,avg:cnt?Math.round(sum/cnt):0,cnt,dx:dx?`${dx.score}/${dx.total}`:"-",warn}});
+    h+=`<div class="tools">${selBasis()}${search()}<button class="btn" id="csv">성적 CSV 내려받기</button></div>
+    <p class="legend">출석은 진단평가와 1~14주차 평가 제출(총 ${ORDER.length}회) 기준입니다. 형성평가 평균은 제출한 주차의 100점 환산 평균이며, 미제출 주차는 평균에서 빠집니다. ⚠는 확인이 필요한 제출 수입니다. 최종 비율은 강의계획서에 따라 적용해 주세요.</p>
+    <div class="tbl"><table><tr><th>학번</th><th>이름</th><th>출석</th><th>지각</th><th>결석</th><th>진단평가</th><th>형성평가 제출</th><th>형성평가 평균</th><th>⚠</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.sid)}</td><td>${esc(r.name)}</td><td class="o">${r.o}</td><td class="l">${r.l}</td><td>${r.x}</td><td>${r.dx}</td><td>${r.cnt}/${F.length}</td><td><b>${r.avg}</b></td><td>${r.warn?`<span class="warn">${r.warn}</span>`:""}</td></tr>`).join("")}</table></div>`;
+    CSV=[["학번","이름","출석","지각","결석","진단평가","형성평가 제출수","형성평가 평균(100점)","확인필요 제출수"]].concat(rows.map(r=>[r.sid,r.name,r.o,r.l,r.x,r.dx,r.cnt,r.avg,r.warn]));
+  }
+  if(VIEW==="log"){
+    const EV={login:"로그인",login_denied:"로그인 거부(명단 없음)",lecture_check:"강의 들음 체크",submit:"평가 제출"};
+    const L=D.logs.filter(g=>!Q||String(g.sid).includes(Q)||String(g.name).includes(Q)).sort((a,b)=>a.at<b.at?1:-1);
+    h+=`<div class="tools">${search()}<button class="btn" id="csv">CSV 내려받기</button></div><p class="legend">최근 기록부터 ${Math.min(L.length,1000)}건을 보여 줍니다. 전체는 CSV나 구글 시트 'log' 탭에서 볼 수 있습니다.</p>
+    <div class="tbl"><table><tr><th>시각</th><th>학번</th><th>이름</th><th>활동</th><th>평가</th><th>내용</th><th>기기</th></tr>
+    ${L.slice(0,1000).map(g=>`<tr><td>${fmt(g.at,true)}</td><td>${esc(g.sid)}</td><td>${esc(g.name)}</td><td>${EV[g.ev]||esc(g.ev)}</td><td>${esc(WEEK[g.key]||g.key)}</td><td>${esc(g.detail)}</td><td title="${esc(g.ua)}">${/Mobi|Android|iPhone/.test(g.ua)?"휴대폰":"PC"}</td></tr>`).join("")}</table></div>`;
+    CSV=[["시각","학번","이름","활동","평가","내용","기기"]].concat(L.map(g=>[fmt(g.at,true),g.sid,g.name,EV[g.ev]||g.ev,WEEK[g.key]||g.key,g.detail,g.ua]));
   }
   app.innerHTML=h;
   app.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{VIEW=b.dataset.v;render()});
-  app.querySelectorAll(".stat").forEach(b=>b.onclick=()=>{SEL=b.dataset.k;VIEW="one";render()});
   app.querySelectorAll("th[data-s]").forEach(t=>t.onclick=()=>{SORT={k:t.dataset.s,d:SORT.k===t.dataset.s?-SORT.d:1};render()});
-  const s=document.getElementById("sel");if(s)s.onchange=()=>{SEL=s.value;render()};
-  const q=document.getElementById("q");if(q)q.oninput=()=>{Q=q.value.trim();const pos=q.selectionStart;render();const n=document.getElementById("q");n.focus();n.setSelectionRange(pos,pos)};
-  document.getElementById("reload").onclick=()=>load(sessionStorage.getItem("hp_pw"));
-  document.getElementById("csv").onclick=csv;
-}
-function csv(){
-  const head=["제출시각","평가","학번","이름","점수","만점","응답","오답문항"];
-  const lines=[head.join(",")].concat(ROWS.map(r=>[r.at,WEEK[r.key]||r.key,r.sid,r.name,r.score,r.total,r.answers,r.wrong].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")));
-  const blob=new Blob(["\ufeff"+lines.join("\n")],{type:"text/csv;charset=utf-8"});
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="호스피스간호실무_평가결과.csv";a.click();toast("CSV를 내려받았어요");
+  const on=(id,ev,f)=>{const e=document.getElementById(id);if(e)e[ev]=f};
+  on("sel","onchange",e=>{SEL=e.target.value;render()});on("basis","onchange",e=>{BASIS=e.target.value;render()});
+  on("q","oninput",e=>{Q=e.target.value.trim();const p=e.target.selectionStart;render();const n=document.getElementById("q");if(n){n.focus();n.setSelectionRange(p,p)}});
+  on("rl","onclick",()=>load(PW));
+  on("csv","onclick",()=>{if(!CSV)return;const t=CSV.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+t],{type:"text/csv;charset=utf-8"}));a.download=`호스피스간호실무_${{att:"출석부",one:WEEK[SEL]+"_결과",grade:"성적산출",log:"활동기록"}[VIEW]}.csv`;a.click();toast("내려받았습니다")});
 }
 const saved=sessionStorage.getItem("hp_pw");if(saved)load(saved);else login();
 </script>
